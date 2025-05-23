@@ -1,0 +1,30 @@
+{
+  "name": "comp-fund-server",
+  "version": "1.0.0",
+  "main": "index.ts",
+  "type": "module",
+  "scripts": {
+    "deploy": "yarn run build && pm2 startOrReload pm2.deploy.json && pm2 log compfund",
+    "build": "yarn && tsc",
+    "dev": "nodemon"
+  },
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "axios": "^1.9.0",
+    "dotenv": "^16.5.0",
+    "express": "^4.17.17",
+    "express-async-errors": "^3.1.1",
+    "google-auth-library": "^9.15.1",
+    "jsonwebtoken": "^9.0.2",
+    "mongoose": "^8.14.1",
+    "sharp": "^0.34.1",
+    "ws": "^8.18.2"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.17",
+    "@types/node": "^22.15.3",
+    "@types/ws": "^8.18.1"
+  }
+}

@@ -1,0 +1,18 @@
+{
+    "apps": [
+        {
+            "name": "compfund",
+            "script": "dist/index.js",
+            "watch": false,
+            "autorestart": true,
+            "time": false,
+            "wait_ready": true,
+            "args": [
+                "--color"
+            ],
+            "env": {
+                "NODE_ENV": "production"
+            }
+        }
+    ]
+}
