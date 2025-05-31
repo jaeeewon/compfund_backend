@@ -22,8 +22,8 @@ interface res {
   data: { [key: string]: any };
 }
 
-async function propagateEvent(type: "message" | "profile", data: kv) {
-  const { roomId, chat } = data;
+async function propagateEvent(type: "message" | "read", data: kv) {
+  const { roomId, chat, timestamp, userId } = data;
 
   if (type === "message") {
     const participants = (
@@ -38,13 +38,37 @@ async function propagateEvent(type: "message" | "profile", data: kv) {
           data: { chat },
         })
       );
+  } else if (type === "read") {
+    const participants = (
+      await participationModel.find({ roomId }).populate("userId", "id").lean()
+    ).map((v) => (v.userId as any).id);
+
+    const logonusr = sockets.filter((v) => participants.includes(v.userId));
+    for (const { ws } of logonusr)
+      ws.send(
+        JSON.stringify({
+          type: "read-chat-event",
+          data: { userId, roomId, timestamp },
+        })
+      );
   }
 }
 
 async function loginHandler(type: string, data: kv): Promise<res | null> {
+  const usr = (
+    await userModel.aggregate([
+      {
+        $match: {
+          id: { $nin: sockets.map((v) => v.userId) },
+        },
+      },
+      { $sample: { size: 1 } },
+      { $project: { id: 1, name: 1, _id: 0 } },
+    ])
+  )[0];
   const ticket = Math.random().toString(36).slice(2);
-  await ticketModel.create({ id: ticket });
-  const url = `${HOST}/oauth/login?ticket=${ticket}`;
+  await ticketModel.create({ id: ticket, status: 1, sub: usr.id });
+  const url = `<${usr.name}(으)로 랜덤 로그인됨>`; // `${HOST}/oauth/login?ticket=${ticket}`;
   return { type: "login-res", data: { ticket, url } };
 }
 
@@ -67,7 +91,8 @@ async function getChatListHandler(type: string, data: kv): Promise<res | null> {
     await participationModel
       .find({ roomId: data.roomId })
       .populate("userId", "latest_access name nickname email picture")
-  ).map((v) => v.userId);
+      .lean()
+  ).map((v) => ({ ...v.userId, lastReadAt: v.lastReadAt }));
   return { type: "get-chat-list-res", data: { chats, participants } };
 }
 
@@ -315,6 +340,34 @@ async function sendMessageHandler(type: string, data: kv): Promise<res | null> {
   return null;
 }
 
+async function readChatHandler(type: string, data: kv): Promise<res | null> {
+  const {
+    userId,
+    detail: { roomId },
+  } = data;
+
+  const user = await userModel.findOne({ id: userId });
+  if (!user) return;
+
+  const participation = await participationModel.findOne({
+    userId: user._id,
+    roomId: roomId,
+  });
+  if (!participation) return;
+  participation.lastReadAt = Date.now();
+  await participation.save();
+  await propagateEvent("read", {
+    roomId,
+    userId,
+    timestamp: participation.lastReadAt,
+  });
+  // console.log(
+  //   `${roomId}의 ${userId}가 메시지를 읽음 | ${new Date(
+  //     participation.lastReadAt
+  //   ).toISOString()}`
+  // );
+}
+
 const handler = {
   login: loginHandler,
   "login-dev": loginDevHandler,
@@ -324,6 +377,7 @@ const handler = {
   "get-room-list": getRoomListHandler,
   "join-room": joinRoomHandler,
   "get-chat-list": getChatListHandler,
+  "read-chat": readChatHandler,
 };
 
 export default async function initWs(server: http.Server) {

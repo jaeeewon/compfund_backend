@@ -18,9 +18,13 @@ const chatSchema = new mongoose.Schema(
     },
     type: { type: String, required: true },
     text: { type: String, required: true },
+    createdAt: {
+      type: Number,
+      default: () => Date.now(),
+    },
     // data: { type: mongoose.Types.Map },
   },
-  { versionKey: false, timestamps: true }
+  { versionKey: false }
 );
 export const chatModel = mongoose.model("chat", chatSchema);
 
@@ -100,7 +104,7 @@ const participationSchema = new mongoose.Schema(
       index: true,
     },
     joinedAt: { type: Date, default: () => Date.now() },
-    lastReadAt: { type: Date, default: null },
+    lastReadAt: { type: Number, default: 0 },
   },
   { versionKey: false }
 );
