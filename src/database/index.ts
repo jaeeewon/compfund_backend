@@ -84,6 +84,7 @@ const userSchema = new mongoose.Schema(
     // rooms: [{ type: mongoose.Schema.Types.ObjectId, ref: "room" }],
     nickname: { type: String, required: true },
     latest_access: { type: Number, default: () => Date.now() },
+    status: { type: String, default: "" },
   },
   { versionKey: false }
 );

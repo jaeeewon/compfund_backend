@@ -22,8 +22,8 @@ interface res {
   data: { [key: string]: any };
 }
 
-async function propagateEvent(type: "message" | "read", data: kv) {
-  const { roomId, chat, timestamp, userId } = data;
+async function propagateEvent(type: "message" | "read" | "status", data: kv) {
+  const { roomId, chat, timestamp, userId, status } = data;
 
   if (type === "message") {
     const participants = (
@@ -49,6 +49,14 @@ async function propagateEvent(type: "message" | "read", data: kv) {
         JSON.stringify({
           type: "read-chat-event",
           data: { userId, roomId, timestamp },
+        })
+      );
+  } else if (type === "status") {
+    for (const { ws } of sockets)
+      ws.send(
+        JSON.stringify({
+          type: "status-update-event",
+          data: { userId, status },
         })
       );
   }
@@ -84,13 +92,18 @@ async function loginDevHandler(type: string, data: kv): Promise<res | null> {
 }
 
 async function getChatListHandler(type: string, data: kv): Promise<res | null> {
-  const chats = await chatModel.find({
-    roomId: data.roomId,
-  });
+  const chats = (
+    await chatModel
+      .find({
+        roomId: data.roomId,
+      })
+      .populate("userId", "id")
+      .lean()
+  ).map((v: any) => ({ ...v, userId: v.userId.id }));
   const participants = (
     await participationModel
       .find({ roomId: data.roomId })
-      .populate("userId", "latest_access name nickname email picture")
+      .populate("userId", "latest_access name nickname email picture id")
       .lean()
   ).map((v) => ({ ...v.userId, lastReadAt: v.lastReadAt }));
   return { type: "get-chat-list-res", data: { chats, participants } };
@@ -138,7 +151,7 @@ async function ticketCheckHandler(type: string, data: kv): Promise<res | null> {
             populate: {
               path: "userId",
               model: "user",
-              select: "latest_access name nickname email picture",
+              select: "latest_access name nickname email picture status id",
             },
           },
         })
@@ -152,6 +165,7 @@ async function ticketCheckHandler(type: string, data: kv): Promise<res | null> {
         name: user.name,
         nickname: user.nickname,
         picture: user.picture,
+        status: user.status,
         rooms,
       },
     };
@@ -368,6 +382,22 @@ async function readChatHandler(type: string, data: kv): Promise<res | null> {
   // );
 }
 
+async function updateStatusHandler(
+  type: string,
+  data: kv
+): Promise<res | null> {
+  const {
+    userId,
+    detail: { status },
+  } = data;
+  const usr = await userModel.findOne({ id: userId });
+  if (!usr) return;
+
+  usr.status = status;
+  await usr.save();
+  await propagateEvent("status", { userId, status });
+}
+
 const handler = {
   login: loginHandler,
   "login-dev": loginDevHandler,
@@ -378,6 +408,7 @@ const handler = {
   "join-room": joinRoomHandler,
   "get-chat-list": getChatListHandler,
   "read-chat": readChatHandler,
+  "update-status": updateStatusHandler,
 };
 
 export default async function initWs(server: http.Server) {
