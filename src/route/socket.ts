@@ -63,20 +63,9 @@ async function propagateEvent(type: "message" | "read" | "status", data: kv) {
 }
 
 async function loginHandler(type: string, data: kv): Promise<res | null> {
-  const usr = (
-    await userModel.aggregate([
-      {
-        $match: {
-          id: { $nin: sockets.map((v) => v.userId) },
-        },
-      },
-      { $sample: { size: 1 } },
-      { $project: { id: 1, name: 1, _id: 0 } },
-    ])
-  )[0];
   const ticket = Math.random().toString(36).slice(2);
-  await ticketModel.create({ id: ticket, status: 1, sub: usr.id });
-  const url = `<${usr.name}(으)로 랜덤 로그인됨>`; // `${HOST}/oauth/login?ticket=${ticket}`;
+  await ticketModel.create({ id: ticket, status: 0 });
+  const url = `${HOST}/oauth/login?ticket=${ticket}`;
   return { type: "login-res", data: { ticket, url } };
 }
 
