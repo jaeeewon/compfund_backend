@@ -82,7 +82,7 @@ const userSchema = new mongoose.Schema(
     email: { type: String, unique: true, required: true },
     name: { type: String, required: true }, // given_name
     // rooms: [{ type: mongoose.Schema.Types.ObjectId, ref: "room" }],
-    nickname: { type: String, required: true },
+    nickname: { type: String, default: "" },
     latest_access: { type: Number, default: () => Date.now() },
     status: { type: String, default: "" },
   },

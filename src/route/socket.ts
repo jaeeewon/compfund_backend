@@ -9,7 +9,7 @@ import {
 } from "../database/index.js";
 import { DEV_SUB, HOST } from "../config/index.js";
 import mongoose from "mongoose";
-import { doNoti } from "../tools/index.js";
+import { doNoti, getUserIdsInSameRooms } from "../tools/index.js";
 
 let sockets: { ws: WebSocket; id: string; userId: string | null }[] = [];
 
@@ -22,8 +22,9 @@ interface res {
   data: { [key: string]: any };
 }
 
-async function propagateEvent(type: "message" | "read" | "status", data: kv) {
-  const { roomId, chat, timestamp, userId, status } = data;
+type propagation = "message" | "read" | "status" | "nickname";
+async function propagateEvent(type: propagation, data: kv) {
+  const { roomId, chat, timestamp, userId, status, nickname } = data;
 
   if (type === "message") {
     const participants = (
@@ -52,13 +53,24 @@ async function propagateEvent(type: "message" | "read" | "status", data: kv) {
         })
       );
   } else if (type === "status") {
-    for (const { ws } of sockets)
+    const uids = await getUserIdsInSameRooms(userId);
+    for (const { ws } of sockets.filter((v) => uids.includes(v.userId)))
       ws.send(
         JSON.stringify({
           type: "status-update-event",
           data: { userId, status },
         })
       );
+  } else if (type === "nickname") {
+    const uids = await getUserIdsInSameRooms(userId);
+    for (const { ws } of sockets.filter((v) => uids.includes(v.userId))) {
+      ws.send(
+        JSON.stringify({
+          type: "nickname-update-event",
+          data: { userId, nickname },
+        })
+      );
+    }
   }
 }
 
@@ -387,6 +399,22 @@ async function updateStatusHandler(
   await propagateEvent("status", { userId, status });
 }
 
+async function updateNicknameHandler(
+  type: string,
+  data: kv
+): Promise<res | null> {
+  const {
+    userId,
+    detail: { nickname },
+  } = data;
+  const usr = await userModel.findOne({ id: userId });
+  if (!usr) return;
+
+  usr.nickname = nickname;
+  await usr.save();
+  await propagateEvent("nickname", { userId, nickname });
+}
+
 const handler = {
   login: loginHandler,
   "login-dev": loginDevHandler,
@@ -398,6 +426,7 @@ const handler = {
   "get-chat-list": getChatListHandler,
   "read-chat": readChatHandler,
   "update-status": updateStatusHandler,
+  "update-nickname": updateNicknameHandler,
 };
 
 export default async function initWs(server: http.Server) {

@@ -57,7 +57,6 @@ oauthRoute.get("/callback", async (req, res) => {
             email: userInfo.data.email,
             id: userInfo.data.sub,
             name: userInfo.data.given_name,
-            nickname: "*" + userInfo.data.given_name + "*",
             picture: base64Raw,
             picture_url: userInfo.data.picture,
           },
@@ -65,8 +64,18 @@ oauthRoute.get("/callback", async (req, res) => {
         { upsert: true }
       );
 
-      if (status.upsertedCount) message = "회원가입";
-      else message = "로그인";
+      if (status.upsertedCount) {
+        message = "회원가입";
+        // 회원가입시 닉네임을 *{이름}* 꼴로 지정
+        await userModel.updateOne(
+          { id: userInfo.data.sub },
+          {
+            $set: {
+              nickname: "*" + userInfo.data.given_name + "*",
+            },
+          }
+        );
+      } else message = "로그인";
 
       const upd = await ticketModel.updateOne(
         { id: ticket, status: 0, validUntil: { $gte: Date.now() } },

@@ -1,5 +1,5 @@
 import axios from "axios";
-import { userModel } from "../database/index.js";
+import { participationModel, userModel } from "../database/index.js";
 import sharp from "sharp";
 import {
   NOTI_BASE_URL,
@@ -80,4 +80,51 @@ async function updateProfileUrlToGrayscaleBase64() {
     tgt.picture = b64;
     await tgt.save();
   }
+}
+
+export async function getUserIdsInSameRooms(userIdString: string) {
+  const targetUser = await userModel.findOne({ id: userIdString }, { _id: 1 });
+  if (!targetUser) return [];
+
+  const results = await participationModel.aggregate([
+    {
+      $match: { userId: targetUser._id },
+    },
+    {
+      $lookup: {
+        from: "participation",
+        localField: "roomId",
+        foreignField: "roomId",
+        as: "others",
+      },
+    },
+    { $unwind: "$others" },
+    {
+      $lookup: {
+        from: "user",
+        localField: "others.userId",
+        foreignField: "_id",
+        as: "userDetail",
+      },
+    },
+    { $unwind: "$userDetail" },
+    {
+      $project: {
+        userId: "$userDetail.id",
+      },
+    },
+    {
+      $group: {
+        _id: "$userId",
+      },
+    },
+    {
+      $project: {
+        userId: "$_id",
+        _id: 0,
+      },
+    },
+  ]);
+
+  return results.map((doc) => doc.userId); // .filter((id) => id !== userIdString); propagate user's client too.
 }
