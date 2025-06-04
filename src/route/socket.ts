@@ -8,8 +8,8 @@ import {
   userModel,
 } from "../database/index.js";
 import { DEV_SUB, HOST } from "../config/index.js";
-import mongoose from "mongoose";
 import { doNoti, getUserIdsInSameRooms } from "../tools/index.js";
+import { CHAT_EXP, getLevel } from "../tools/level.js";
 
 let sockets: { ws: WebSocket; id: string; userId: string | null }[] = [];
 
@@ -22,9 +22,9 @@ interface res {
   data: { [key: string]: any };
 }
 
-type propagation = "message" | "read" | "status" | "nickname";
+type propagation = "message" | "read" | "status" | "nickname" | "level-up";
 async function propagateEvent(type: propagation, data: kv) {
-  const { roomId, chat, timestamp, userId, status, nickname } = data;
+  const { roomId, chat, timestamp, userId, status, nickname, level } = data;
 
   if (type === "message") {
     const participants = (
@@ -68,6 +68,16 @@ async function propagateEvent(type: propagation, data: kv) {
         JSON.stringify({
           type: "nickname-update-event",
           data: { userId, nickname },
+        })
+      );
+    }
+  } else if (type === "level-up") {
+    const uids = await getUserIdsInSameRooms(userId);
+    for (const { ws } of sockets.filter((v) => uids.includes(v.userId))) {
+      ws.send(
+        JSON.stringify({
+          type: "level-up-event",
+          data: { userId, level },
         })
       );
     }
@@ -348,9 +358,25 @@ async function sendMessageHandler(type: string, data: kv): Promise<res | null> {
 
   // 연결된 클라이언트에도 전송해줘야
 
-  await propagateEvent("message", { roomId, chat });
+  await propagateEvent("message", {
+    roomId,
+    chat: {
+      userId: user.id,
+      text: chat.text,
+      createdAt: chat.createdAt,
+      roomId: chat.roomId,
+    },
+  });
   room.latestChat = new Date();
   await room.save();
+
+  const currLevel = getLevel(user.exp);
+  user.exp += CHAT_EXP;
+  await user.save();
+  const newLevel = getLevel(user.exp);
+  if (newLevel > currLevel) {
+    propagateEvent("level-up", { userId, level: newLevel });
+  }
 
   return null;
 }
@@ -415,6 +441,23 @@ async function updateNicknameHandler(
   await propagateEvent("nickname", { userId, nickname });
 }
 
+async function getLeaderboardHandler(
+  type: string,
+  data: kv
+): Promise<res | null> {
+  const usrs = await userModel
+    .find()
+    .select("id nickname exp")
+    .sort({ exp: -1 });
+  const leaderboard = usrs.map((v) => ({
+    id: v.id,
+    nickname: v.nickname,
+    exp: v.exp,
+    level: getLevel(v.exp),
+  }));
+  return { type: "get-leaderboard-res", data: { leaderboard } };
+}
+
 const handler = {
   login: loginHandler,
   "login-dev": loginDevHandler,
@@ -427,6 +470,7 @@ const handler = {
   "read-chat": readChatHandler,
   "update-status": updateStatusHandler,
   "update-nickname": updateNicknameHandler,
+  "get-leaderboard": getLeaderboardHandler,
 };
 
 export default async function initWs(server: http.Server) {

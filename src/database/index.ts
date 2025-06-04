@@ -85,6 +85,7 @@ const userSchema = new mongoose.Schema(
     nickname: { type: String, default: "" },
     latest_access: { type: Number, default: () => Date.now() },
     status: { type: String, default: "" },
+    exp: { type: Number, default: 0 },
   },
   { versionKey: false }
 );
