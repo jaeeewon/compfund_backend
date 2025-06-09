@@ -273,8 +273,12 @@ async function createRoomHandler(type: string, data: kv): Promise<res | null> {
   // );
 
   await participationModel.create({ userId: user._id, roomId: room._id });
+  const participants = await participationModel
+    .find({ roomId: room._id })
+    .populate("userId", "id email latest_access name nickname picture status")
+    .lean();
 
-  return { type: "create-room-res", data: { room } };
+  return { type: "create-room-res", data: { room, participants } };
 }
 
 async function getRoomListHandler(type: string, data: kv): Promise<res | null> {
@@ -314,14 +318,18 @@ async function joinRoomHandler(type: string, data: kv): Promise<res | null> {
     };
   }
 
-  const join = await participationModel.create({
+  await participationModel.create({
     userId: user._id,
     roomId: roomId,
   });
 
   const room = await roomModel.findOne({ _id: roomId });
+  const participants = await participationModel
+    .find({ roomId })
+    .populate("userId", "id email latest_access name nickname picture status")
+    .lean();
 
-  return { type: "join-room-res", data: { room } };
+  return { type: "join-room-res", data: { room, participants } };
 }
 
 async function sendMessageHandler(type: string, data: kv): Promise<res | null> {
